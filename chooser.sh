@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+# set -e
 
 # Resources:
 #   https://espterm.github.io/docs/VT100%20escape%20codes.html
@@ -14,11 +14,29 @@ shopt -s checkwinsize; (:;:)
 # printf '\e[?1000h'  # enable mouse support
 
 usage() { printf 'Usage: %s [choices...]\n' "${0##*/}"; exit 0; }
-cursor_up(){ printf '\e[A'; }
-cursor_down(){ printf '\e[B'; }
+# cursor_up(){ printf '\e[A'; }
+# cursor_down(){ printf '\e[B'; }
+# cursor_up(){ printf "\e[A\e[48;5;105m%s\e[0m" "░" ; }
+# cursor_down(){ printf "\e[B\e[48;5;105m%s\e[0m" "░" ; }
+cursor_up(){ printf "\e[A\e[48;5;105m%s\e[0m" ">" ; }
+cursor_down(){ printf "\e[B\e[48;5;105m%s\e[0m" ">" ; }
 cursor_save(){ printf '\e7'; }
 cursor_restore(){ printf '\e8'; }
-read_keys(){ read -rsn1 KEY </dev/tty; }
+# read_keys(){ read -rsn1 KEY </dev/tty; }
+read_keys(){
+    unset K1 K2 K3
+    # shellcheck disable=2162
+    read -sN1 </dev/tty
+    K1="$REPLY"
+    # shellcheck disable=2162
+    read -sN2 -t 0.001 </dev/tty
+    K2="$REPLY"
+    # shellcheck disable=2162
+    read -sN1 -t 0.001 </dev/tty
+    K3="$REPLY"
+    # this will read full keysets like 'enter' and 'space' instead of just j or k
+    KEY="$K1$K2$K3"
+}
 set_offset() { IFS='[;' read -p $'\e[6n' -d R -rs _ offset _ _ </dev/tty; }
 cleanup() {
     printf '\e[%d;1H' "$offset"
@@ -26,7 +44,8 @@ cleanup() {
     printf '\e[%d;1H' "$offset"
     stty echo </dev/tty
     exec 1>&3 3>&-  # restore stdout and close fd #3
-    [ -n "$sel" ] && printf '%s\n' "$sel"
+    # [ -n "$sel" ] && printf '%s\n' "$sel"
+    [ -n "$sel" ] && printf '%s\n' "${sel[@]}"
 }
 list_choices() {
     printf '\e[%d;1H' "$offset"  # go back to the start position
@@ -38,7 +57,7 @@ list_choices() {
 
 declare -a choices=()
 if [ "$1" = - ];then
-    while read -r i;do choices+=("$i") ;done
+    while read -r i; do choices+=("$i"); done
 else 
     choices=("$@")
 fi
@@ -50,46 +69,66 @@ pos=0
 total_choices=${#choices[@]}
 ((ROWS = (LINES / 2) + 1))
 set_offset
-if (( (offset + ROWS) >= LINES )) && (( total_choices >= ROWS ));then # TODO: is this needed?
-    # if the offset (starting cursor position) + ROWS goes beyond LINES and
-    # we have more choices than the number of ROWS change the offset to what it will be
-    # after listing the choices.
-    if (( offset == LINES ));then
-        printf '\e[%d;1H' "$((offset - ROWS))";
-    else
-        printf '\e[%d;1H' "$((offset - ROWS + 1))";
-    fi
+if (( (offset + ROWS) > LINES )) && (( total_choices >= ROWS ));then # TODO: don't do this?
+    printf '\e[%d;1H' "$((offset - ROWS + 1))";
     set_offset
 fi
 cursor=$offset
 
+declare -a multiple_choice
+multiple_choice=()
+
+cursor_up_logic() {
+    if (( cursor == offset )) && (( pos > 0 ));then
+        ((pos-=1))
+    elif (( cursor > offset ));then
+        ((cursor-=1))
+        cursor_up
+    fi
+}
+
+cursor_down_logic() {
+
+    (( actual_pos == (total_choices - 1) )) && return # TODO: fix this, unecessary logic?
+    if (( cursor == (ROWS + offset - 1) )) && (( (total_choices - pos) != ROWS ))
+    then
+        ((pos+=1))
+    elif (( cursor < (ROWS + offset - 1) ))
+    then
+        ((cursor+=1))
+        # cursor_down
+        printf "\e[B\e[48;5;105m%s\e[0m" ">"
+    fi
+}
+
+add_multiple() {
+    if [[ "${multiple_choice[*]}" =~ ${1} ]]; then
+        return
+    else
+        multiple_choice+=("${choices[actual_pos]}")
+    fi
+}
+
 (( (total_choices - pos) >= ROWS )) && printf '\e[%d;1H▼' "$((ROWS + offset))"
 trap cleanup EXIT
 while :;do
-    actual_pos=$((cursor - offset + pos))
+    ((actual_pos = cursor - offset + pos)) || true
     list_choices
     read_keys
+    # fixes exiting when holding down keys
+    sleep 0.0001
     case "${KEY}" in
-        k)
-            if (( cursor == offset )) && (( pos > 0 ));then
-                pos=$((pos - 1))
-            elif (( cursor > offset ));then
-                cursor=$((cursor - 1))
-                cursor_up
-            fi
+        k|$'\x1b\x5b\x41')
+                cursor_up_logic
             ;;
-        j)
-            (( actual_pos == (total_choices - 1) )) && continue # TODO: fix this, unecessary logic?
-            if (( cursor == (ROWS + offset - 1) )) && (( (total_choices - pos) != ROWS ))
-            then
-                pos=$((pos + 1))
-            elif (( cursor < (ROWS + offset - 1) ))
-            then
-                cursor=$((cursor + 1))
-                cursor_down
-            fi
+        j|$'\x1b\x5b\x42')
+                cursor_down_logic
             ;;
-        '') # TODO: fix this, pressing ctrl+j and some other keys triggers this case 
-            sel=${choices[actual_pos]} ; exit 0 ;;
+        $'\x1b') # ESC key
+            exit 0 ;;
+        $'\x09') # TAB key
+            add_multiple "${choices[actual_pos]}" ;;
+        $'\n'|$'\x0a') # TODO: fix this, pressing ctrl+j and some other keys triggers this case 
+            sel=${choices[actual_pos]} ; sel="$sel ${multiple_choice[*]}" ; exit 0 ;;
     esac
 done
