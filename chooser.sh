@@ -43,14 +43,15 @@ cleanup() {
     for ((i=0;i<=ROWS;i++));do printf '\e[2K'; cursor_down ;done
     printf '\e[%d;1H' "$offset"
     stty echo </dev/tty
+    tput cnorm
     exec 1>&3 3>&-  # restore stdout and close fd #3
     # [ -n "$sel" ] && printf '%s\n' "$sel"
     [ -n "$sel" ] && printf '%s\n' "${sel[@]}"
 }
 list_choices() {
     printf '\e[%d;1H' "$offset"  # go back to the start position
-    printf ' %-80s\n' "${choices[@]:pos:$ROWS}"
-    printf '\e[%d;1H' "$cursor"  # go back to the cursor position
+    printf ' %-80s│\n' "${choices[@]:pos:$ROWS}"
+    printf '\e[%d;1H>' "$cursor"  # go back to the cursor position
 }
 
 [ -z "$1" ] && usage
@@ -65,6 +66,7 @@ fi
 exec 3>&1  # send stdout to fd 3
 exec >&2   # send stdout to stderr
 stty -echo </dev/tty
+tput civis
 pos=0
 total_choices=${#choices[@]}
 ((ROWS = (LINES / 2) + 1))
