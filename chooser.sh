@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# set -e
+# set -x
 
 # Resources:
 #   https://espterm.github.io/docs/VT100%20escape%20codes.html
@@ -109,6 +109,17 @@ add_multiple() {
     fi
 }
 
+enter() {
+    # if [[ "${choices[actual_pos]}" =~ ${multiple_choice[*]} ]]; then
+    if [[  ${multiple_choice[*]} =~ ${choices[actual_pos]} ]]; then
+        sel="${multiple_choice[*]}" ; exit 0
+    else
+        sel="${choices[actual_pos]} ${multiple_choice[*]}"
+    fi
+    exit 0
+    
+}
+
 (( (total_choices - pos) >= ROWS )) && printf '\e[%d;1H▼' "$((ROWS + offset))"
 trap cleanup EXIT
 while :;do
@@ -118,17 +129,10 @@ while :;do
     # fixes exiting when holding down keys
     sleep 0.0001
     case "${KEY}" in
-        k|$'\x1b\x5b\x41')
-                cursor_up_logic
-            ;;
-        j|$'\x1b\x5b\x42')
-                cursor_down_logic
-            ;;
-        $'\x1b') # ESC key
-            exit 0 ;;
-        $'\x09') # TAB key
-            add_multiple "${choices[actual_pos]}" ;;
-        $'\n'|$'\x0a') # TODO: fix this, pressing ctrl+j and some other keys triggers this case 
-            sel=${choices[actual_pos]} ; sel="$sel ${multiple_choice[*]}" ; exit 0 ;;
+        k|$'\x1b\x5b\x41') cursor_up_logic ;;
+        j|$'\x1b\x5b\x42') cursor_down_logic ;;
+        $'\x1b') exit 0 ;; # ESC key
+        $'\x09') add_multiple "${choices[actual_pos]}" ;; # TAB key
+        $'\n'|$'\x0a') enter ;;
     esac
 done
