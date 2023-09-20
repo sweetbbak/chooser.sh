@@ -14,12 +14,12 @@ shopt -s checkwinsize; (:;:)
 # printf '\e[?1000h'  # enable mouse support
 
 usage() { printf 'Usage: %s [choices...]\n' "${0##*/}"; exit 0; }
-# cursor_up(){ printf '\e[A'; }
-# cursor_down(){ printf '\e[B'; }
+cursor_up(){ printf '\e[A'; }
+cursor_down(){ printf '\e[B'; }
 # cursor_up(){ printf "\e[A\e[48;5;105m%s\e[0m" "░" ; }
 # cursor_down(){ printf "\e[B\e[48;5;105m%s\e[0m" "░" ; }
-cursor_up(){ printf "\e[A\e[48;5;105m%s\e[0m" ">" ; }
-cursor_down(){ printf "\e[B\e[48;5;105m%s\e[0m" ">" ; }
+# cursor_up(){ printf "\e[A\e[48;5;105m%s\e[0m" ">" ; }
+# cursor_down(){ printf "\e[B\e[48;5;105m%s\e[0m" ">" ; }
 cursor_save(){ printf '\e7'; }
 cursor_restore(){ printf '\e8'; }
 # read_keys(){ read -rsn1 KEY </dev/tty; }
@@ -96,16 +96,17 @@ cursor_down_logic() {
     elif (( cursor < (ROWS + offset - 1) ))
     then
         ((cursor+=1))
-        # cursor_down
-        printf "\e[B\e[48;5;105m%s\e[0m" ">"
+        cursor_down
     fi
 }
 
 add_multiple() {
     if [[ "${multiple_choice[*]}" =~ ${1} ]]; then
+        cursor_down_logic
         return
     else
         multiple_choice+=("${choices[actual_pos]}")
+        cursor_down_logic
     fi
 }
 
